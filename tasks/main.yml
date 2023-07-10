@@ -1,0 +1,55 @@
+---
+- name: "Download Vector RPM"
+  become: yes
+  get_url:
+    url: https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-1.x86_64.rpm
+    dest: /root/vector-{{ vector_version }}.rpm
+    checksum: "{{ vector_checksum }}"
+    owner: root
+    group: root
+
+- name: "Install Vector"
+  become: yes
+  yum:
+    name: "/root/vector-{{ vector_version }}.rpm"
+    disable_gpg_check: yes # Unsigned package
+    state: installed
+
+- name: "Start Vector service"
+  become: yes
+  service:
+    name: vector.service
+    enabled: yes
+    state: started
+
+# Merge vector_config_* hashes so each group can have its own small input to the
+# final vector configuration similar to puppet hiera.
+- set_fact:
+    vector_config: "{{ lookup('community.general.merge_variables', 'vector_config_', pattern_type='prefix')}}"
+
+- debug:
+    msg: "{{ vector_config }}"
+
+- name: "Configure Vector"
+  become: yes
+  template:
+    src: vector.toml.j2
+    dest: /etc/vector/vector.toml
+    mode: "0644"
+    owner: root
+    group: root
+    validate: vector validate %s
+  notify: restart vector
+  when: vector_config != ""
+
+- name: "Deploy Default Vector Config"
+  become: yes
+  copy:
+    src: vector.toml
+    dest: /etc/vector/vector.toml
+    mode: "0644"
+    owner: root
+    group: root
+    validate: vector validate %s
+  notify: restart vector
+  when: vector_config == ""

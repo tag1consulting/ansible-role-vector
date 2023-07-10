@@ -1,0 +1,27 @@
+[api]
+  enabled = {{ 'true' if vector_enable_api else 'false' }}
+
+{% for source in vector_config.sources | default([]) %}
+
+[sources.{{ source.name }}_source]
+type = "file"
+include = [{{ source.files | map("to_json") | join(", ") }}]
+{{ source.extra if source.extra is defined }}
+
+
+[transforms.{{ source.name }}_transform]
+type = "remap"
+inputs = ["{{ source.name }}_source"]
+source = """
+.hostname = "{{ ansible_hostname }}"
+.service = "{{ source.service }}"
+"""
+{{ source.transform_extra if transform.extra is defined }}
+
+{% endfor %}
+
+
+[sinks.datadog_logs]
+type = "datadog_logs"
+inputs = [{{ vector_config.sources | map(attribute='name') | map('regex_replace', '^(.*)$', '\"\\1_transform\"') | join(',') }}]
+default_api_key = "{{ datadog_api_key | trim }}"
